@@ -1,3 +1,4 @@
+import { InternalError } from "@src/util/errors/internal-error";
 import { AxiosStatic } from "axios";
 
 export interface StormGlassPointSource {
@@ -28,7 +29,23 @@ export interface ForecastPoint {
     swellPeriod: number;
     windDirection: number;
     windSpeed: number;
+}
+
+export class ClientRequestError extends InternalError {
+  constructor(message: string) {
+    const internalMessage =
+      'Unexpected error when trying to communicate to StormGlass';
+    super(`${internalMessage}: ${message}`);
   }
+}
+
+export class StormGlassResponseError extends InternalError {
+  constructor(message: string) {
+    const internalMessage =
+      'Unexpected error returned by the StormGlass service';
+    super(`${internalMessage}: ${message}`);
+  }
+}
 
 export class StormGlass {
 
@@ -37,12 +54,28 @@ export class StormGlass {
 
     constructor(protected request: AxiosStatic) {}
 
-    public async fetchPoint(lat: number, lng: number): Promise<ForecastPoint[]>  {
+    public async fetchPoints(lat: number, lng: number): Promise<ForecastPoint[]>  {
+        try {
         const response = await this.request.get<StormGlassForecastResponse>(
-            'https://localhost:8080/v2/weather/point?params=${this.stormGlassAPIParams}&source=${this.stormGlassAPISource}&lat=-33.792726&lng=151.289824'
+            'https://localhost:8080/v2/weather/point?params=${this.stormGlassAPIParams}&source=${this.stormGlassAPISource}&lat=-33.792726&lng=151.289824',
+            {
+                headers: {
+                    Authorization: 'fake-token'
+                }
+            }
         );    
 
         return this.normalizeResponse(response.data);
+        } catch (err) {
+            if (err.response && err.response.status) {
+                throw new StormGlassResponseError(
+                `Error: ${JSON.stringify(err.response.data)} Code: ${
+                  err.response.status
+                }`
+            );
+        }
+        throw new ClientRequestError(err.message);
+      }
     }
 
     private normalizeResponse(
